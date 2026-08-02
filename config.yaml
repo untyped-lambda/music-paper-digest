@@ -1,0 +1,102 @@
+# 音楽論文ウィークリーダイジェスト設定
+#
+# 個人情報 (宛先メールアドレス等) はここには書かない。
+# recipient / sources.openalex.mailto は src/config.py の load_config() が
+# 環境変数 (DIGEST_RECIPIENT / GMAIL_ADDRESS) から実行時に解決して注入する。
+# 詳細は README.md の「設定の優先順位」を参照。
+subject_prefix: "🎵 音楽論文ウィークリー"
+
+# 収集
+sources:
+  openalex:
+    enabled: true
+    # 音楽関連の絞り込み。subfield と topics は OR できないため別クエリで取得しマージする
+    subfield_ids: ["1210"]             # Arts and Humanities > Music
+    topic_ids:                         # 音楽に関わる他分野のトピック
+      - T10788                         # Neuroscience and Music Perception
+      - T11309                         # Music and Audio Processing
+      - T11768                         # Music Therapy and Health
+      - T11349                         # Music Technology and Sound Studies
+      - T13327                         # Arts, Culture, and Music Studies
+      - T14287                         # Music Education and Analysis
+      - T14034                         # Musicians' Health and Performance
+    per_page: 200                      # OpenAlex の最大値
+    max_pages: 10                      # 1 クエリあたりの最大ページ数(安全弁)
+  arxiv:
+    enabled: true
+    categories: [cs.SD, eess.AS]
+    page_size: 100
+    max_results: 600                   # 新着をさかのぼる上限
+    request_delay_sec: 3.0             # arXiv API のレート制限に配慮
+lookback_days: 7
+
+# HTTP(収集時)
+http:
+  timeout_sec: 30
+  max_retries: 3       # ネットワーク/一時エラー時のリトライ回数
+  backoff_base_sec: 2.0
+
+# 事前フィルタ(ルールベース)
+prefilter:
+  min_abstract_chars: 120   # これ未満のアブストラクトは除外
+  # OpenAlex の type のうち研究論文として扱わないもの
+  excluded_types:
+    - editorial
+    - erratum
+    - retraction
+    - paratext
+    - peer-review
+    - letter
+    - grant
+    - supplementary-materials
+    - reference-entry
+    - libguides
+    - standard
+    - dataset
+  # タイトルによる非研究記事の判定(正規表現・大文字小文字は無視)
+  excluded_title_patterns:
+    - '^\s*(book\s+)?review\s+of\b'
+    - '^\s*book\s+review'
+    - '^\s*(record|album|concert|performance)\s+review\b'
+    - '^\s*erratum\b'
+    - '^\s*corrigendum\b'
+    - '^\s*correction\s+to\b'
+    - '^\s*retraction\b'
+    - '^\s*retracted\b'
+    - '^\s*editorial\b'
+    - '^\s*(in\s+)?memoriam\b'
+    - '^\s*obituary\b'
+    - '^\s*(table\s+of\s+)?contents\b'
+    - '^\s*front\s+matter\b'
+    - '^\s*back\s+matter\b'
+    - '^\s*call\s+for\s+papers\b'
+    - '^\s*index\s*$'
+
+# 選別
+min_score: 40            # これ未満は「その他」にも載せない
+highlight_count: 18      # 日本語要約を付ける上位件数
+others_max_in_body: 50   # 本文に載せるタイトル一覧の上限(超過分は添付へ)
+
+# Claude
+model: claude-haiku-4-5-20251001
+rank_batch_size: 40      # 一括スコアリングの1バッチ件数
+
+# スコアリング (rank.py)
+rank:
+  abstract_chars: 300    # スコアリングに渡すアブストラクト冒頭の文字数
+  default_score: 50      # スコアが取得できなかった場合の既定値
+
+# 要約 (summarize.py)
+summarize:
+  abstract_chars: 1500   # 要約に渡すアブストラクトの最大文字数
+
+# ドライラン (--dry-run)
+dry_run:
+  fixtures_path: tests/fixtures/papers_sample.json
+  out_dir: out
+
+# 既読DB
+sent_db_path: data/sent_ids.json
+
+# メール本文サイズ制御 (Agent B / render.py)
+max_body_kb: 100   # 本文HTMLの上限(KB)。超過分・others溢れ分は添付HTMLへ
