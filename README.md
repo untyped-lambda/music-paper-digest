@@ -206,6 +206,37 @@ ruff check src tests
 ruff format src tests
 ```
 
+### Git フック(lefthook)
+
+commit のたびに ruff を手で流す必要がないよう、[lefthook](https://github.com/evilmartians/lefthook)
+で pre-commit フックを設定しています(`lefthook.yml`)。devcontainer では
+`postCreateCommand` が `lefthook install` まで実行するので**追加の操作は不要**です。
+
+devcontainer を使わない場合は、依存インストール後に一度だけ実行してください:
+
+```bash
+lefthook install
+```
+
+commit 時に、**ステージされた `.py` ファイル**に対して次の順で実行されます:
+
+| 順 | コマンド | 挙動 |
+|---|---|---|
+| 1 | `ruff check` | 問題があれば commit を中断(自動修正はしない) |
+| 2 | `ruff format` | 整形し、変更されたファイルを自動で `git add` し直す(`stage_fixed`) |
+
+対象を「ステージされたファイル」に限っているのは、**今回触っていないファイルの
+既存の指摘で commit がブロックされるのを避ける**ためです。リポジトリ全体を
+検査したいときは上記の `ruff check src tests` を手で実行してください。
+
+`ruff check` で止められた場合、機械的に直せるものは一括修正できます:
+
+```bash
+ruff check --fix src tests
+```
+
+フックを一時的に飛ばしたいときは `git commit --no-verify` を使います。
+
 ## セキュリティ上の注意
 
 このプロジェクトは公開リポジトリでの運用を想定しています。以下の点に

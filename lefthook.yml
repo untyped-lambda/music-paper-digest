@@ -1,0 +1,27 @@
+# lefthook — Git フック管理
+#
+# セットアップ(コンテナ内で1回だけ):
+#   pip install -r requirements-dev.txt && lefthook install
+#
+# commit 時に、ステージされた Python ファイルへ ruff を自動適用します。
+#   1. ruff check  — 問題があれば commit を中断(自動修正はしない)
+#   2. ruff format — 整形し、変更を自動で再ステージ
+#
+# 一時的にスキップしたい場合: git commit --no-verify
+
+pre-commit:
+  parallel: false # check → format の順に実行する(&& と同じ意味)
+  commands:
+    1_ruff_check:
+      priority: 1
+      glob: "*.py"
+      run: ruff check {staged_files}
+      fail_text: |
+        ruff check で問題が見つかりました。上記の指摘を修正してから commit してください。
+        機械的に直せるものは `ruff check --fix src tests` で一括修正できます。
+
+    2_ruff_format:
+      priority: 2
+      glob: "*.py"
+      run: ruff format {staged_files}
+      stage_fixed: true # 整形で変更されたファイルを自動で git add し直す
