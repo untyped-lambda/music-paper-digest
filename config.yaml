@@ -79,7 +79,7 @@ others_max_in_body: 50   # 本文に載せるタイトル一覧の上限(超過�
 
 # Claude
 model: claude-haiku-4-5-20251001
-rank_batch_size: 40      # 一括スコアリングの1バッチ件数
+rank_batch_size: 50      # 一括スコアリングの1バッチ件数
 
 # スコアリング (rank.py)
 rank:
