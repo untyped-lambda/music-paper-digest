@@ -4,10 +4,21 @@
 **テスト1 → 5 の順に実施してください。** 各段階は前の段階が通っていることを前提に、
 確認範囲を1つずつ広げる構成になっています(問題が起きたとき、どの層が原因か切り分けやすくするため)。
 
-> **Windows での Python コマンドについて**: この PC では `python` コマンドが
-> Microsoft Store のスタブに向いているため、**必ず `py` を使ってください**
-> (`py --version` が `Python 3.14.6` を返すことを最初に確認)。
-> venv を有効化した後のシェル内では `python` がそのvenvを指すので使って構いません。
+> **実行環境は2通り。以下のどちらで実施するかで、Python の起動コマンドと準備手順が変わります。**
+>
+> **A. devcontainer 内(VS Code の「Reopen in Container」— 推奨)**
+> - コマンドは **`python`**。`py` は Windows 専用ランチャーなのでコンテナには存在しません(`bash: py: command not found` が出たらこれが原因)
+> - **venv は作らないでください。** コンテナ起動時に `postCreateCommand` が依存パッケージを
+>   コンテナの Python へインストール済みなので、そのまま `python -m src.main ...` を実行できます
+> - 最初に `python --version` が `Python 3.14.x` を返すことだけ確認してください
+>
+> **B. Windows のホスト側で直接実行する場合**
+> - **`py` を使ってください。** この PC では `python` コマンドが Microsoft Store のスタブに
+>   向いているため動きません(`py --version` が `Python 3.14.6` を返すことを確認)
+> - venv を作成し、有効化後のシェル内では `python` がその venv を指すので `python` で構いません
+>
+> 以下の手順では **A(devcontainer)を基準**に書いています。B の場合は各コマンドの
+> `python` を `py` に読み替え、venv 作成手順を追加してください(テスト1に併記)。
 
 ---
 
@@ -22,7 +33,16 @@
 
 ### 手順
 
+**A. devcontainer 内(推奨)** — 依存はインストール済みなので、そのまま実行するだけです。
+
 ```bash
+python --version
+python -m src.main --dry-run
+```
+
+**B. Windows ホストで実行する場合** — venv の作成が必要です。
+
+```powershell
 cd C:\Users\Ygg\Documents\music-paper-digest
 py -m venv .venv
 .venv\Scripts\activate
@@ -30,7 +50,7 @@ pip install -r requirements.txt
 python -m src.main --dry-run
 ```
 
-続けて **もう一度** `python -m src.main --dry-run` を実行してください。
+どちらの場合も、続けて **もう一度** `python -m src.main --dry-run` を実行してください(冪等性の確認)。
 
 ### 期待結果
 - 2回とも exit 0(エラーなく終了)
@@ -41,8 +61,9 @@ python -m src.main --dry-run
 ### エラー時に見る場所・疑うところ
 | 症状 | 疑わしい箇所 |
 |---|---|
-| `SyntaxError` | Python 3.13 以前で実行している。本コードは 3.14 専用の構文(PEP 758)を含む。`py --version` を確認 |
-| `ModuleNotFoundError` | venv 未有効化、または `pip install` 忘れ。プロンプト先頭に `(.venv)` が出ているか確認 |
+| `py: command not found`(コンテナ内) | `py` は Windows 専用ランチャー。コンテナでは `python` を使う |
+| `SyntaxError` | Python 3.13 以前で実行している。本コードは 3.14 専用の構文(PEP 758)を含む。`python --version`(ホストなら `py --version`)を確認 |
+| `ModuleNotFoundError` | コンテナ内なら `postCreateCommand` が失敗した可能性 → VS Code の出力パネル「Dev Containers」ログを確認し、手動で `pip install -r requirements.txt -r requirements-dev.txt`。ホストなら venv 未有効化か `pip install` 忘れ(プロンプト先頭に `(.venv)` が出ているか確認) |
 | `FileNotFoundError`(fixtures) | カレントディレクトリがリポジトリ直下でない。`cd` し直す |
 | 2回目が0件になる | dry-run の冪等化(main.py の mark_sent スキップ)が壊れている。`data/sent_ids.json` にIDが書き込まれていないか確認 |
 | HTMLの表示崩れ | `src/render.py` の問題。`out/preview.html` をエディタで開き、壊れているセクション(概観/ハイライト/その他)からどの生成部か特定 |
