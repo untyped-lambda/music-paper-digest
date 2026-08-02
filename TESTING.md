@@ -81,14 +81,44 @@ python -m src.main --dry-run
 GitHub Actions に載せる前に、同じ処理を手元で実行して外部サービスとの接続を1つずつ検証するのが目的です。
 **注意: 実際に自分宛てにメールが1通届き、Claude API に数円程度の課金が発生します。**
 
-### 手順(同じ venv 内で)
+### 手順
+
+> ⚠️ **環境変数の設定構文はシェルによって違います。**
+> `$env:VAR = "..."` は **PowerShell 専用**で、devcontainer 内の bash では使えません
+> (`bash: :VAR: command not found` になります)。bash では `export` を使ってください。
+>
+> ⚠️ **APIキー・アプリパスワードの取り扱い**
+> - **キーをチャット・Issue・スクリーンショット等に貼り付けないこと。** 貼ってしまった場合は
+>   漏洩として扱い、直ちに失効・再発行してください(Anthropic: console.anthropic.com の
+>   API Keys で Revoke / Google: アカウントのアプリパスワード一覧で削除)
+> - 下記の `read -rs` を使う方法なら**画面にもシェル履歴にも残りません**。コマンド行に直接
+>   キーを書く方法(`export KEY="sk-ant-..."`)は履歴ファイルに平文で残るため非推奨です
+
+**A. devcontainer 内(bash)**
 
 ```bash
-$env:ANTHROPIC_API_KEY = "sk-ant-..."
-$env:GMAIL_ADDRESS = "あなたのGmailアドレス"
-$env:GMAIL_APP_PASSWORD = "アプリパスワード16文字(スペースなし)"
+read -rs -p "ANTHROPIC_API_KEY: " ANTHROPIC_API_KEY && export ANTHROPIC_API_KEY
+export GMAIL_ADDRESS="あなたのGmailアドレス"
+read -rs -p "GMAIL_APP_PASSWORD: " GMAIL_APP_PASSWORD && export GMAIL_APP_PASSWORD
 python -m src.main --verbose
 ```
+
+設定できたかは、**値ではなく文字数**で確認すると安全です(3つとも 0 以外、アプリパスワードは 16):
+
+```bash
+echo "${#ANTHROPIC_API_KEY} ${#GMAIL_ADDRESS} ${#GMAIL_APP_PASSWORD}"
+```
+
+**B. Windows ホスト(PowerShell、venv 有効化済みのシェルで)**
+
+```powershell
+$env:ANTHROPIC_API_KEY = (Read-Host "ANTHROPIC_API_KEY" -MaskInput)
+$env:GMAIL_ADDRESS = "あなたのGmailアドレス"
+$env:GMAIL_APP_PASSWORD = (Read-Host "GMAIL_APP_PASSWORD" -MaskInput)
+python -m src.main --verbose
+```
+
+環境変数はシェルを閉じると消えます(意図した挙動です)。テストをやり直すたびに再設定してください。
 
 ### 期待結果
 - exit 0 で終了し、ログに「取得件数 → フィルタ後 → ハイライトN件」の流れが出る
