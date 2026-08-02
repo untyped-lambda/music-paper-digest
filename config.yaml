@@ -73,7 +73,7 @@ prefilter:
     - '^\s*index\s*$'
 
 # 選別
-min_score: 40            # これ未満は「その他」にも載せない
+min_score: 50            # これ未満は「その他」にも載せない
 highlight_count: 18      # 日本語要約を付ける上位件数
 others_max_in_body: 50   # 本文に載せるタイトル一覧の上限(超過分は添付へ)
 
