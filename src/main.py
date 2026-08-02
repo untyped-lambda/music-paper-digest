@@ -16,7 +16,7 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -203,7 +203,7 @@ def run(dry_run: bool = False, config_path: str | os.PathLike[str] | None = None
     sent_ids = [p["id"] for p in highlights + others if p.get("id")]
 
     if dry_run:
-        _write_preview(config, result)
+        _write_preview(config, result, week_end=until)
         log.info(
             "dry-run のため既読DB(%s)は更新しません(%d 件を対象外)",
             sent_db_path,
@@ -238,9 +238,26 @@ def _out_dir(config: dict) -> Path:
     return out_dir
 
 
-def _write_preview(config: dict, result: Any) -> None:
+def _archive_dir(out_dir: Path, date_str: str) -> Path:
+    """``out/YYYY/MM/`` を作って返す。
+
+    添付HTML(digest-full-*.html)は実行のたびに増えるため、年/月で振り分けて
+    out/ 直下が膨らまないようにする。``date_str`` が不正な場合は実行日を使う。
+    """
+    try:
+        stamp = date.fromisoformat(str(date_str)[:10])
+    except ValueError:
+        stamp = date.today()
+    archive = out_dir / f"{stamp:%Y}" / f"{stamp:%m}"
+    archive.mkdir(parents=True, exist_ok=True)
+    return archive
+
+
+def _write_preview(config: dict, result: Any, week_end: str = "") -> None:
     out_dir = _out_dir(config)
 
+    # preview.html / subject.txt は「最新版」として常に同じパスを上書きする
+    # (毎回同じ場所を開けるようにするため、振り分けの対象外)
     preview = out_dir / "preview.html"
     preview.write_text(getattr(result, "html_body", "") or "", encoding="utf-8")
     log.info("プレビューを書き出しました: %s", preview)
@@ -248,7 +265,7 @@ def _write_preview(config: dict, result: Any) -> None:
     attachment_html = getattr(result, "attachment_html", None)
     if attachment_html:
         filename = getattr(result, "attachment_filename", "") or "attachment.html"
-        attachment = out_dir / Path(filename).name
+        attachment = _archive_dir(out_dir, week_end) / Path(filename).name
         attachment.write_text(attachment_html, encoding="utf-8")
         log.info("添付HTMLを書き出しました: %s", attachment)
 
