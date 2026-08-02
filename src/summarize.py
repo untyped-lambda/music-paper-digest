@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from .rank import call_claude_json
+from .rank import FatalClaudeError, call_claude_json
 
 log = logging.getLogger(__name__)
 
@@ -278,6 +278,10 @@ def summarize_highlights(papers: list[dict], config: dict, client: Any) -> list[
                 tag, summary = _summarize_one(paper, config, client)
                 paper["field_tag"] = tag
                 paper["summary_ja"] = summary
+            except FatalClaudeError:
+                # 認証エラー等は全件で同じ結果になる。要約無しのダイジェストを
+                # 配信しないよう即座に中断する。
+                raise
             except Exception as exc:  # noqa: BLE001 - 1 件の失敗で全体を落とさない
                 log.error("要約に失敗しました (%s): %s", paper.get("id"), exc)
                 paper["field_tag"] = guess_field_tag(paper)
@@ -323,6 +327,8 @@ def write_overview(highlights: list[dict], total_count: int, config: dict, clien
         if overview:
             return overview
         raise ValueError("overview が空です")
+    except FatalClaudeError:
+        raise
     except Exception as exc:  # noqa: BLE001
         log.error("エディターズノートの生成に失敗しました: %s", exc)
         return (

@@ -12,6 +12,8 @@ import logging
 import re
 from typing import Any
 
+import anthropic
+
 log = logging.getLogger(__name__)
 
 DEFAULT_BATCH_SIZE = 40
@@ -160,6 +162,22 @@ def _create_message(
     return _response_text(response)
 
 
+class FatalClaudeError(RuntimeError):
+    """リトライしても回復しない Claude API エラー(認証・権限など)。
+
+    呼び出し側はこの例外を握り潰してはならない。握り潰すと、要約もスコアも
+    生成できていないのに「成功」として空同然のダイジェストを配信してしまう。
+    """
+
+
+def _is_fatal_claude_error(exc: Exception) -> bool:
+    """認証・権限エラーか判定する(リトライやフォールバックをしてはいけないもの)。"""
+    if isinstance(exc, anthropic.AuthenticationError | anthropic.PermissionDeniedError):
+        return True
+    # SDK 以外の経路で来た場合に備えたフォールバック判定
+    return getattr(exc, "status_code", None) in (401, 403)
+
+
 def call_claude_json(
     client: Any,
     config: dict,
@@ -170,7 +188,10 @@ def call_claude_json(
     schema: dict | None = None,
     retries: int = 1,
 ) -> dict:
-    """Claude を呼び、JSON オブジェクトとして返す。パース失敗時は ``retries`` 回再試行。"""
+    """Claude を呼び、JSON オブジェクトとして返す。パース失敗時は ``retries`` 回再試行。
+
+    認証・権限エラーの場合は再試行せず ``FatalClaudeError`` を送出する。
+    """
     last_error: Exception | None = None
     prompt = user
     for attempt in range(retries + 1):
@@ -185,6 +206,11 @@ def call_claude_json(
             )
             return extract_json(text)
         except Exception as exc:  # noqa: BLE001
+            if _is_fatal_claude_error(exc):
+                raise FatalClaudeError(
+                    "Claude API の認証に失敗しました。ANTHROPIC_API_KEY の値と、"
+                    f"キーが失効していないかを確認してください: {exc}"
+                ) from exc
             last_error = exc
             if attempt >= retries:
                 break
@@ -337,11 +363,18 @@ def rank_papers(papers: list[dict], config: dict, client: Any) -> list[dict]:
         fallback = int(_cfg(config, "rank.default_score", DEFAULT_SCORE_ON_FAILURE))
         total_batches = (len(ranked) + batch_size - 1) // batch_size
 
+        failed_batches = 0
+
         for batch_no in range(total_batches):
             batch = ranked[batch_no * batch_size : (batch_no + 1) * batch_size]
             try:
                 scores = _score_batch(batch, config, client)
+            except FatalClaudeError:
+                # 認証エラー等はリトライしても回復しない。既定値で埋めて
+                # 「成功」扱いにすると無内容のダイジェストを配信してしまうため中断する。
+                raise
             except Exception as exc:  # noqa: BLE001 - 1 バッチの失敗で全体を落とさない
+                failed_batches += 1
                 log.error(
                     "バッチ %d/%d のスコアリングに失敗しました: %s",
                     batch_no + 1,
@@ -366,6 +399,14 @@ def rank_papers(papers: list[dict], config: dict, client: Any) -> list[dict]:
                     fallback,
                 )
             log.info("スコアリング: バッチ %d/%d 完了", batch_no + 1, total_batches)
+
+        if total_batches and failed_batches == total_batches:
+            # 全バッチが失敗した = 関連度判定が一切効いていない。
+            # 既定値だけのダイジェストを配信しても意味がないため中断する。
+            raise RuntimeError(
+                f"スコアリングの全 {total_batches} バッチが失敗しました。"
+                "Claude API の状態(レート制限・モデル名・ネットワーク)を確認してください"
+            )
 
     # 同点は新しい論文を上に(安定ソートを二段掛け)
     ranked.sort(key=lambda p: (p.get("published") or "", p.get("title") or ""), reverse=True)

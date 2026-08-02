@@ -120,6 +120,46 @@ python -m src.main --verbose
 
 環境変数はシェルを閉じると消えます(意図した挙動です)。テストをやり直すたびに再設定してください。
 
+### 本実行の前に: 認証情報だけを単体確認する(推奨)
+
+本実行は論文を1000件以上収集してから認証に到達するため、キーが間違っていると
+数分待たされた末に失敗します。**先に認証情報だけを検証**すると切り分けが速くなります。
+
+**Claude API キー**(200 が返れば有効。課金はほぼ発生しません):
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" https://api.anthropic.com/v1/messages \
+  -H "x-api-key: $ANTHROPIC_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "content-type: application/json" \
+  -d '{"model":"claude-haiku-4-5","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}'
+```
+
+| 結果 | 意味 |
+|---|---|
+| `200` | 有効。次へ進んでよい |
+| `401` | キーが無効・失効済み。console.anthropic.com で再発行し、環境変数を設定し直す |
+| `400` | キーは有効だがリクエストが不正(モデル名など)。`config.yaml` の `model` を確認 |
+
+**Gmail アプリパスワード**(`SMTP auth OK` が出れば有効):
+
+```bash
+python -c "
+import os, smtplib
+s = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+s.login(os.environ['GMAIL_ADDRESS'], os.environ['GMAIL_APP_PASSWORD'])
+print('SMTP auth OK'); s.quit()
+"
+```
+
+`SMTPAuthenticationError (535)` が出る場合の確認順:
+1. アプリパスワードから**4文字区切りの空白を除いた16文字**を渡しているか(`${#GMAIL_APP_PASSWORD}` が 16 か)
+2. Google アカウントで**2段階認証が有効**か(無効だとアプリパスワード自体を発行できません)
+3. 通常のログインパスワードを誤って使っていないか
+4. アプリパスワードが削除・失効していないか(myaccount.google.com → セキュリティ → アプリ パスワード)
+
+両方が通ってから本実行に進んでください。
+
 ### 期待結果
 - exit 0 で終了し、ログに「取得件数 → フィルタ後 → ハイライトN件」の流れが出る
 - **untyped.lambda@gmail.com(= GMAIL_ADDRESS)にダイジェストメールが届く**
