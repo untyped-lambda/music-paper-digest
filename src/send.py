@@ -32,6 +32,16 @@ def _require_env(name: str) -> str:
     return value
 
 
+def _clean_credential(value: str) -> str:
+    """認証情報から空白類を除去する。
+
+    Google はアプリパスワードを4文字ずつ区切って表示するため、コピーすると
+    空白入りの19文字になりやすい。SMTP は空白入りを拒否する(535)ので、
+    ここで正規化して事故を防ぐ。前後の改行混入(Secrets 貼り付けミス)も同様。
+    """
+    return "".join(value.split())
+
+
 def _build_message(
     *,
     subject: str,
@@ -68,8 +78,8 @@ def _deliver(
     attachment_filename: str = "",
 ) -> None:
     """SMTP 送信の共通処理。send_email / notify_failure から再利用する。"""
-    gmail_address = _require_env("GMAIL_ADDRESS")
-    gmail_app_password = _require_env("GMAIL_APP_PASSWORD")
+    gmail_address = _clean_credential(_require_env("GMAIL_ADDRESS"))
+    gmail_app_password = _clean_credential(_require_env("GMAIL_APP_PASSWORD"))
 
     msg = _build_message(
         subject=subject,

@@ -171,11 +171,19 @@ class FatalClaudeError(RuntimeError):
 
 
 def _is_fatal_claude_error(exc: Exception) -> bool:
-    """認証・権限エラーか判定する(リトライやフォールバックをしてはいけないもの)。"""
+    """リトライやフォールバックをしてはいけないエラーか判定する。
+
+    対象は「何度呼んでも同じ結果になるもの」:
+      - 401/403: キーが無効・失効、権限不足
+      - 400 かつクレジット残高不足: アカウント側の課金設定の問題
+    """
     if isinstance(exc, anthropic.AuthenticationError | anthropic.PermissionDeniedError):
         return True
-    # SDK 以外の経路で来た場合に備えたフォールバック判定
-    return getattr(exc, "status_code", None) in (401, 403)
+    if getattr(exc, "status_code", None) in (401, 403):
+        return True
+    # 残高不足は 400 (invalid_request_error) で返るため、メッセージで判別する
+    message = str(exc).lower()
+    return "credit balance" in message or "plans & billing" in message
 
 
 def call_claude_json(
@@ -208,8 +216,9 @@ def call_claude_json(
         except Exception as exc:  # noqa: BLE001
             if _is_fatal_claude_error(exc):
                 raise FatalClaudeError(
-                    "Claude API の認証に失敗しました。ANTHROPIC_API_KEY の値と、"
-                    f"キーが失効していないかを確認してください: {exc}"
+                    "Claude API を利用できませんでした(再試行しても回復しないため中断します)。"
+                    "ANTHROPIC_API_KEY の有効性と、console.anthropic.com のクレジット残高を"
+                    f"確認してください: {exc}"
                 ) from exc
             last_error = exc
             if attempt >= retries:
