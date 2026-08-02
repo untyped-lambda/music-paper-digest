@@ -433,16 +433,36 @@ def fetch_papers(config: dict, since: str, until: str) -> list[dict]:
     OpenAlex(出版版)と arXiv(プレプリント)を統合し、DOI/ID で重複排除する。
     """
     papers: list[dict] = []
+    attempted: list[str] = []
+    failed: list[str] = []
 
-    if _cfg(config, "sources.openalex.enabled", True):
-        papers.extend(_fetch_openalex(config, since, until))
-    else:
-        log.info("OpenAlex は無効化されています")
+    sources: list[tuple[str, str, Any]] = [
+        ("OpenAlex", "sources.openalex.enabled", _fetch_openalex),
+        ("arXiv", "sources.arxiv.enabled", _fetch_arxiv),
+    ]
 
-    if _cfg(config, "sources.arxiv.enabled", True):
-        papers.extend(_fetch_arxiv(config, since, until))
-    else:
-        log.info("arXiv は無効化されています")
+    for name, enabled_key, fetcher in sources:
+        if not _cfg(config, enabled_key, True):
+            log.info("%s は無効化されています", name)
+            continue
+        attempted.append(name)
+        try:
+            papers.extend(fetcher(config, since, until))
+        except Exception as exc:
+            # 1つのソースが落ちてもダイジェスト全体を失敗させない。
+            # (例: arXiv の一時的な 429。残るソースの結果だけで配信を続行する)
+            failed.append(name)
+            log.warning("%s の取得に失敗したため、このソースを除外して続行します: %s", name, exc)
+
+    if attempted and len(failed) == len(attempted):
+        # 全ソースが失敗した場合のみ異常終了させる(空メールの送信を防ぐ)
+        raise RuntimeError(f"すべての収集ソースが失敗しました: {', '.join(failed)}")
+    if failed:
+        log.warning(
+            "一部ソースを欠いたまま処理を続行します(欠落: %s)。"
+            "恒常的に発生する場合は該当ソースの API 仕様変更を疑ってください",
+            ", ".join(failed),
+        )
 
     deduped = dedupe_papers(papers)
     deduped.sort(key=lambda p: (p.get("published") or "", p.get("title") or ""), reverse=True)
